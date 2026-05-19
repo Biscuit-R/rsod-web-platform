@@ -12,8 +12,8 @@
             <img src="https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png" alt="用户头像" />
           </el-avatar>
           <div class="user-basic-info">
-            <div class="user-name">示例用户</div>
-            <div class="user-role">普通用户</div>
+            <div class="user-name">{{ userStore.userInfo?.username || '用户' }}</div>
+            <div class="user-role">{{ userStore.userInfo?.email || '' }}</div>
             <el-button size="small" type="primary" plain style="margin-top: 8px">
               编辑资料
             </el-button>
@@ -43,7 +43,22 @@
   </div>
 </template>
 
-<script setup></script>
+<script setup>
+import { onMounted } from "vue";
+import { useUserStore } from "../stores/user";
+
+const userStore = useUserStore();
+
+onMounted(async () => {
+  if (userStore.isLoggedIn && !userStore.userInfo) {
+    try {
+      await userStore.fetchUserInfo();
+    } catch (error) {
+      console.error("获取用户信息失败:", error);
+    }
+  }
+});
+</script>
 
 <style scoped lang="scss">
 .profile-page {

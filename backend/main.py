@@ -2,8 +2,17 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.config import settings
+from app.database import engine, Base
 from app.api.detection import router as detection_router
+from app.api.auth import router as auth_router
+from app.api.history import router as history_router
 from app.utils.file_utils import ensure_directories
+
+# 导入 db_models 以确保表被注册到 Base.metadata
+import app.models.db_models  # noqa: F401
+
+# 自动建表
+Base.metadata.create_all(bind=engine)
 
 ensure_directories()
 
@@ -24,6 +33,8 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory=settings.STATIC_DIR), name="static")
 
 app.include_router(detection_router, prefix="/api")
+app.include_router(auth_router, prefix="/api")
+app.include_router(history_router, prefix="/api")
 
 
 @app.get("/")

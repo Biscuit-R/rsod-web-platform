@@ -17,7 +17,7 @@
             />
           </el-avatar>
           <div class="user-info">
-            <div class="user-name">用户</div>
+            <div class="user-name">{{ userStore.userInfo?.username || '用户' }}</div>
             <div class="user-role">普通用户</div>
           </div>
           <el-icon class="dropdown-icon"><CaretBottom /></el-icon>
@@ -28,16 +28,28 @@
 </template>
 
 <script setup>
-import { computed } from "vue";
+import { computed, onMounted } from "vue";
 import { useRoute } from "vue-router";
 import {
   Bell,
   CaretBottom,
   House,
 } from "@element-plus/icons-vue";
+import { useUserStore } from "../stores/user";
 
 const route = useRoute();
+const userStore = useUserStore();
 const currentRouteName = computed(() => route.name || "智能检测");
+
+onMounted(async () => {
+  if (userStore.isLoggedIn && !userStore.userInfo) {
+    try {
+      await userStore.fetchUserInfo();
+    } catch (error) {
+      console.error("获取用户信息失败:", error);
+    }
+  }
+});
 </script>
 
 <style scoped>

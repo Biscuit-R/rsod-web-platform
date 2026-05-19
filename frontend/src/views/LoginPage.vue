@@ -64,8 +64,11 @@
 import { ref, reactive } from "vue";
 import { Picture, User, Lock } from "@element-plus/icons-vue";
 import { useRouter } from "vue-router";
+import { ElMessage } from "element-plus";
+import { useUserStore } from "../stores/user";
 
 const router = useRouter();
+const userStore = useUserStore();
 
 const loginForm = reactive({
   username: "",
@@ -85,13 +88,26 @@ const loginRules = {
 };
 
 const loginFormRef = ref(null);
+const loading = ref(false);
 
 const handleLogin = () => {
-  loginFormRef.value.validate((valid) => {
+  loginFormRef.value.validate(async (valid) => {
     if (valid) {
-      console.log("登录请求:", loginForm);
-      localStorage.setItem("token", "mock-token");
-      router.push("/detection");
+      loading.value = true;
+      try {
+        const res = await userStore.login({
+          username: loginForm.username,
+          password: loginForm.password,
+        });
+        if (res.success) {
+          ElMessage.success("登录成功");
+          router.push("/detection");
+        }
+      } catch (error) {
+        // 错误已在 axios 拦截器中处理
+      } finally {
+        loading.value = false;
+      }
     }
   });
 };

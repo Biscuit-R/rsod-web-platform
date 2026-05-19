@@ -1,7 +1,11 @@
 import os
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
+from sqlalchemy.orm import Session
 from app.services.detection_service import detection_service
 from app.utils.file_utils import save_upload_file, ensure_directories
+from app.utils.auth_utils import get_current_user
+from app.database import get_db
+from app.models.db_models import User, DetectionHistory
 from app.config import settings
 from app.models.schemas import SingleDetectionResponse, TargetListResponse, TargetItem
 
@@ -13,7 +17,9 @@ ensure_directories()
 @router.post("/single", response_model=SingleDetectionResponse)
 async def detect_single_image(
     file: UploadFile = File(...),
-    model_name: str = Form("pest-v1")
+    model_name: str = Form("pest-v1"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     try:
         filename = await save_upload_file(file, settings.UPLOAD_DIR)
@@ -21,10 +27,30 @@ async def detect_single_image(
 
         result = detection_service.detect_single_image(image_path, model_name)
 
+        # 保存检测记录到数据库
+        history = DetectionHistory(
+            user_id=current_user.id,
+            filename=filename,
+            original_image=result.image_url,
+            result_image=result.result_image_url,
+            model_name=result.model_name,
+            total_objects=result.total_objects,
+            detection_time=result.detection_time,
+            boxes=[box.model_dump() for box in result.boxes],
+            status="completed",
+        )
+        db.add(history)
+        db.commit()
+        db.refresh(history)
+
+        # 将 history_id 附加到结果中
+        result_dict = result.model_dump()
+        result_dict["detection_id"] = str(history.id)
+
         return SingleDetectionResponse(
             success=True,
             message="检测成功",
-            data=result
+            data=result_dict
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"检测失败: {str(e)}")

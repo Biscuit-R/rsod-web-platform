@@ -46,6 +46,7 @@
             type="password"
             placeholder="请输入密码"
             size="large"
+            show-password
           >
             <template #prefix>
               <el-icon><Lock /></el-icon>
@@ -59,6 +60,7 @@
             type="password"
             placeholder="请确认密码"
             size="large"
+            show-password
           >
             <template #prefix>
               <el-icon><Lock /></el-icon>
@@ -93,8 +95,11 @@
 import { ref, reactive } from "vue";
 import { UserFilled, User, Message, Lock } from "@element-plus/icons-vue";
 import { useRouter } from "vue-router";
+import { ElMessage } from "element-plus";
+import { useUserStore } from "../stores/user";
 
 const router = useRouter();
+const userStore = useUserStore();
 
 const registerForm = reactive({
   username: "",
@@ -147,13 +152,27 @@ const registerRules = {
 };
 
 const registerFormRef = ref(null);
+const loading = ref(false);
 
 const handleRegister = () => {
-  registerFormRef.value.validate((valid) => {
+  registerFormRef.value.validate(async (valid) => {
     if (valid) {
-      console.log("注册请求:", registerForm);
-      localStorage.setItem("token", "mock-token");
-      router.push("/detection");
+      loading.value = true;
+      try {
+        const res = await userStore.register({
+          username: registerForm.username,
+          email: registerForm.email,
+          password: registerForm.password,
+        });
+        if (res.success) {
+          ElMessage.success("注册成功");
+          router.push("/detection");
+        }
+      } catch (error) {
+        // 错误已在 axios 拦截器中处理
+      } finally {
+        loading.value = false;
+      }
     }
   });
 };

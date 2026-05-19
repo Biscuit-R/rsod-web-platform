@@ -23,22 +23,17 @@
         <el-option label="检测中" value="processing" />
         <el-option label="失败" value="failed" />
       </el-select>
-
-      <el-select v-model="filterType" placeholder="类型筛选" size="default" class="filter-select">
-        <el-option label="全部" value="" />
-        <el-option label="单图检测" value="single" />
-        <el-option label="批量检测" value="batch" />
-      </el-select>
     </div>
 
-    <div class="history-list">
+    <div class="history-list" v-loading="loading">
       <div
         v-for="record in filteredRecords"
         :key="record.id"
         class="history-card"
       >
         <div class="record-preview">
-          <div class="preview-placeholder">
+          <img v-if="record.result_image" :src="record.result_image" alt="检测结果" class="preview-image" />
+          <div v-else class="preview-placeholder">
             <el-icon :size="24" color="#9ca3af"><Picture /></el-icon>
           </div>
           <div class="status-badge" :class="record.status">
@@ -49,38 +44,39 @@
         <div class="record-info">
           <div class="record-header">
             <span class="record-filename">{{ record.filename }}</span>
-            <span class="record-type">{{ getTypeText(record.type) }}</span>
+            <span class="record-type">{{ record.model_name }}</span>
           </div>
           <div class="record-meta">
             <span class="meta-item">
               <el-icon><Clock /></el-icon>
-              {{ record.time }}
-            </span>
-            <span class="meta-item">
-              <el-icon><Picture /></el-icon>
-              {{ record.count }} 张图片
+              {{ record.created_at }}
             </span>
             <span class="meta-item">
               <el-icon><Aim /></el-icon>
-              {{ record.targets }} 个目标
+              {{ record.total_objects }} 个目标
+            </span>
+            <span class="meta-item">
+              耗时 {{ record.detection_time }}s
             </span>
           </div>
-          <div class="record-tags">
-            <span v-for="tag in record.detectedTargets" :key="tag" class="detected-tag">
-              {{ tag }}
+          <div class="record-tags" v-if="record.boxes && record.boxes.length > 0">
+            <span v-for="box in record.boxes.slice(0, 5)" :key="box.class_name" class="detected-tag">
+              {{ box.class_name }}
+            </span>
+            <span v-if="record.boxes.length > 5" class="detected-tag more">
+              +{{ record.boxes.length - 5 }}
             </span>
           </div>
         </div>
 
         <div class="record-actions">
           <el-button size="small">查看</el-button>
-          <el-button size="small">下载</el-button>
           <el-button size="small" type="danger" @click="deleteRecord(record)">删除</el-button>
         </div>
       </div>
     </div>
 
-    <div v-if="filteredRecords.length === 0" class="empty-state">
+    <div v-if="!loading && filteredRecords.length === 0" class="empty-state">
       <el-icon :size="64" class="empty-icon"><Help /></el-icon>
       <p class="empty-text">暂无检测记录</p>
       <el-button type="primary" @click="$router.push('/detection')">
@@ -88,58 +84,63 @@
         开始检测
       </el-button>
     </div>
+
+    <div v-if="total > pageSize" class="pagination">
+      <el-pagination
+        v-model:current-page="currentPage"
+        :page-size="pageSize"
+        :total="total"
+        layout="prev, pager, next"
+        @current-change="handlePageChange"
+      />
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from "vue";
+import { ref, computed, onMounted } from "vue";
+import { ElMessage } from "element-plus";
 import {
   Search, Clock, Picture, Aim, Help, Plus,
 } from "@element-plus/icons-vue";
+import { getHistoryList, deleteHistory } from "../api/history";
 
 const searchQuery = ref("");
 const filterStatus = ref("");
 const filterType = ref("");
+const loading = ref(false);
+const historyRecords = ref([]);
+const currentPage = ref(1);
+const pageSize = ref(10);
+const total = ref(0);
 
-const historyRecords = ref([
-  {
-    id: 1,
-    filename: "airport_20241201.jpg",
-    type: "single",
-    status: "completed",
-    time: "2024-12-01 14:30",
-    count: 1,
-    targets: 3,
-    detectedTargets: ["飞机", "机场跑道", "建筑物"],
-  },
-  {
-    id: 2,
-    filename: "shipyard_batch.zip",
-    type: "batch",
-    status: "completed",
-    time: "2024-12-01 10:15",
-    count: 15,
-    targets: 28,
-    detectedTargets: ["船舶", "港口", "集装箱"],
-  },
-  {
-    id: 3,
-    filename: "city_area",
-    type: "folder",
-    status: "processing",
-    time: "2024-11-30 16:45",
-    count: 50,
-    targets: 0,
-    detectedTargets: [],
-  },
-]);
+const fetchHistory = async () => {
+  loading.value = true;
+  try {
+    const res = await getHistoryList({
+      page: currentPage.value,
+      page_size: pageSize.value,
+    });
+    if (res.success) {
+      historyRecords.value = res.data;
+      total.value = res.total;
+    }
+  } catch (error) {
+    console.error("获取历史记录失败:", error);
+  } finally {
+    loading.value = false;
+  }
+};
+
+onMounted(() => {
+  fetchHistory();
+});
 
 const filteredRecords = computed(() => {
   return historyRecords.value.filter((record) => {
     const matchesSearch = !searchQuery.value || record.filename.toLowerCase().includes(searchQuery.value.toLowerCase());
     const matchesStatus = !filterStatus.value || record.status === filterStatus.value;
-    const matchesType = !filterType.value || record.type === filterType.value;
-    return matchesSearch && matchesStatus && matchesType;
+    return matchesSearch && matchesStatus;
   });
 });
 
@@ -148,16 +149,23 @@ const getStatusText = (status) => {
   return texts[status] || status;
 };
 
-const getTypeText = (type) => {
-  const texts = { single: "单图检测", batch: "批量检测", folder: "文件夹" };
-  return texts[type] || type;
+const deleteRecord = async (record) => {
+  if (confirm(`确定要删除记录 "${record.filename}" 吗？`)) {
+    try {
+      const res = await deleteHistory(record.id);
+      if (res.success) {
+        ElMessage.success("删除成功");
+        fetchHistory();
+      }
+    } catch (error) {
+      console.error("删除失败:", error);
+    }
+  }
 };
 
-const deleteRecord = (record) => {
-  if (confirm(`确定要删除记录 "${record.filename}" 吗？`)) {
-    const index = historyRecords.value.findIndex((r) => r.id === record.id);
-    if (index > -1) historyRecords.value.splice(index, 1);
-  }
+const handlePageChange = (page) => {
+  currentPage.value = page;
+  fetchHistory();
 };
 </script>
 
@@ -220,5 +228,21 @@ const deleteRecord = (record) => {
     .empty-icon { color: #9ca3af; margin-bottom: 16px; }
     .empty-text { font-size: 15px; color: var(--text-secondary); margin-bottom: 24px; }
   }
+
+  .pagination {
+    display: flex; justify-content: center; margin-top: 24px;
+  }
+}
+
+.preview-image {
+  width: 100%; height: 100%; object-fit: cover;
+}
+
+.record-type {
+  padding: 3px 8px; background-color: #f3f4f6; border-radius: 4px; font-size: 12px; color: var(--text-secondary);
+}
+
+.detected-tag.more {
+  background-color: rgba(107, 114, 128, 0.1); color: #6b7280;
 }
 </style>

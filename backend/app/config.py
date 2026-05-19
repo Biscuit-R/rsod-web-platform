@@ -19,6 +19,17 @@ class Settings(BaseModel):
     CONFIDENCE_THRESHOLD: float = 0.5
     IOU_THRESHOLD: float = 0.45
 
+    # 数据库配置
+    DB_HOST: str = "localhost"
+    DB_PORT: int = 5432
+    DB_USER: str = "rsod_user"
+    DB_PASSWORD: str = "rsod_password"
+    DB_NAME: str = "rsod_db"
+
+    # JWT配置
+    JWT_SECRET_KEY: str = "rsod-secret-key-change-in-production"
+    JWT_EXPIRE_MINUTES: int = 1440  # 24小时
+
     CORS_ORIGINS: list = ["http://localhost:5173", "http://localhost:3000"]
 
 
